@@ -18,11 +18,31 @@ Actions.exists = function(action) {
 };
 
 Actions.getLocalFile = function(url) {
-	return require('path').join(__dirname, '..', url);
+	return require('path').join(process.cwd(), url);
 };
 
 Actions.getDBM = function() {
 	return this.DBM;
+};
+
+Actions.callListFunc = function(list, funcName, args) {
+	return new Promise(function(resolve, reject) {
+		const max = list.length;
+		let curr = 0;
+		function callItem() {
+			if(curr === max) {
+				resolve.apply(this, arguments);
+				return;
+			}
+			const item = list[curr++];
+			if(item && item[funcName] && typeof(item[funcName]) === 'function') {
+				item[funcName].apply(item, args).then(callItem).catch(callItem);
+			} else {
+				callItem();
+			}
+		};
+		callItem();
+	});
 };
 
 Actions.getActionVariable = function(name, defaultValue) {
@@ -34,6 +54,7 @@ Actions.getActionVariable = function(name, defaultValue) {
 
 Actions.eval = function(content, cache) {
 	if(!content) return false;
+	const DBM = this.getDBM();
 	const tempVars = this.getActionVariable.bind(cache.temp);
 	let serverVars = null;
 	if(cache.server) {
@@ -42,6 +63,9 @@ Actions.eval = function(content, cache) {
 	const globalVars = this.getActionVariable.bind(this.global);
 	const msg = cache.msg;
 	const server = cache.server;
+	const client = DBM.Bot.bot;
+	const bot = DBM.Bot.bot;
+	const me = server ? server.me : null;
 	let user = '', member = '', mentionedUser = '', mentionedChannel = '', defaultChannel = '';
 	if(msg) {
 		user = msg.author;
@@ -379,7 +403,46 @@ Actions.getChannel = function(type, varName, cache) {
 			break;
 		case 2:
 			if(server) {
-				return server.channels.first();
+				return server.getDefaultChannel();
+			}
+			break;
+		case 3:
+			return cache.temp[varName];
+			break;
+		case 4:
+			if(server && this.server[server.id]) {
+				return this.server[server.id][varName];
+			}
+			break;
+		case 5:
+			return this.global[varName];
+			break;
+		default: 
+			break;
+	}
+	return false;
+};
+
+Actions.getVoiceChannel = function(type, varName, cache) {
+	const msg = cache.msg;
+	const server = cache.server;
+	switch(type) {
+		case 0:
+			if(msg && msg.member) {
+				return msg.member.voiceChannel;
+			}
+			break;
+		case 1:
+			if(msg && msg.mentions) {
+				const member = msg.mentions.members.first();
+				if(member) {
+					return member.voiceChannel;
+				}
+			}
+			break;
+		case 2:
+			if(server) {
+				return server.getDefaultVoiceChannel();
 			}
 			break;
 		case 3:
